@@ -1,17 +1,16 @@
 {
-  "name": "streaming-proxy",
+  "name": "my-project",
   "version": "1.0.0",
-  "description": "Basic streaming proxy for m3u8 and mpd with automatic header forwarding",
+  "description": "Streaming proxy server",
   "main": "server.js",
-  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "got": "^12.6.0"
+    "node-fetch": "^2.6.1"
+  },
+  "engines": {
+    "node": ">=14"
   }
-},
-"scripts": {
-  "start": "node server.js"
 }
