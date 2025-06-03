@@ -7,59 +7,53 @@ const port = process.env.PORT || 3000;
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Referer, User-Agent');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Referer, User-Agent, Origin');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+const FORCE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Referer': 'https://allupplay.xyz',  // Change this to the referer your stream expects
+  'Origin': 'https://allupplay.xyz',
+  'Accept': '*/*',
+  'Connection': 'keep-alive'
+};
 
 app.get('/proxy', async (req, res) => {
   try {
     const url = req.query.url;
     if (!url) return res.status(400).send('Missing url parameter');
 
-    const headers = {
-      'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
-      'Referer': req.headers['referer'] || '',
-      'Origin': req.headers['origin'] || ''
-    };
+    console.log('Proxy request for:', url);
 
-    console.log(`Proxy request for: ${url}`);
+    // Always send forced headers, ignore client's headers to avoid missing headers
+    const headers = { ...FORCE_HEADERS };
 
     const response = await fetch(url, { headers });
     if (!response.ok) return res.status(response.status).send('Failed to fetch resource');
 
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
-
     res.setHeader('content-type', contentType);
     res.setHeader('Access-Control-Allow-Origin', '*');
 
-    // Text content (m3u8, mpd, text) rewrite URLs inside playlists
     if (
       contentType.includes('application/vnd.apple.mpegurl') ||
       contentType.includes('vnd.apple.mpegurl') ||
-      contentType.includes('application/x-mpegURL') ||
-      contentType.includes('application/dash+xml') ||
-      contentType.includes('mpd+xml') ||
-      contentType.startsWith('text/')
+      contentType.includes('application/x-mpegURL')
     ) {
       let body = await response.text();
-
-      if (
-        contentType.includes('application/vnd.apple.mpegurl') ||
-        contentType.includes('vnd.apple.mpegurl') ||
-        contentType.includes('application/x-mpegURL')
-      ) {
-        body = rewriteM3U8(body, url, req);
-      }
-
-      if (contentType.includes('application/dash+xml') || contentType.includes('mpd+xml')) {
-        body = rewriteMPD(body, url, req);
-      }
-
+      body = rewriteM3U8(body, url, req);
       return res.send(body);
     }
 
-    // For binary content (segments, video, audio), pipe stream
+    if (contentType.includes('application/dash+xml') || contentType.includes('mpd+xml')) {
+      let body = await response.text();
+      body = rewriteMPD(body, url, req);
+      return res.send(body);
+    }
+
+    // For media segments or binary content, pipe the stream directly
     response.body.pipe(res);
 
   } catch (e) {
@@ -68,28 +62,25 @@ app.get('/proxy', async (req, res) => {
   }
 });
 
-// Rewrite URLs inside m3u8 playlist
 function rewriteM3U8(body, baseUrl, req) {
-  const lines = body.split('\n').map(line => {
+  return body.split('\n').map(line => {
     if (line.trim() === '' || line.startsWith('#')) return line;
     try {
       const absoluteUrl = new URL(line, baseUrl).href;
-      const encoded = encodeURIComponent(absoluteUrl);
-      return `${req.protocol}://${req.get('host')}/proxy?url=${encoded}`;
+      const encodedUrl = encodeURIComponent(absoluteUrl);
+      return `${req.protocol}://${req.get('host')}/proxy?url=${encodedUrl}`;
     } catch {
       return line;
     }
-  });
-  return lines.join('\n');
+  }).join('\n');
 }
 
-// Rewrite URLs inside MPD manifest XML
 function rewriteMPD(body, baseUrl, req) {
   return body.replace(/<BaseURL>([^<]+)<\/BaseURL>/g, (_, url) => {
     try {
       const absoluteUrl = new URL(url, baseUrl).href;
-      const encoded = encodeURIComponent(absoluteUrl);
-      return `<BaseURL>${req.protocol}://${req.get('host')}/proxy?url=${encoded}</BaseURL>`;
+      const encodedUrl = encodeURIComponent(absoluteUrl);
+      return `<BaseURL>${req.protocol}://${req.get('host')}/proxy?url=${encodedUrl}</BaseURL>`;
     } catch {
       return `<BaseURL>${url}</BaseURL>`;
     }
