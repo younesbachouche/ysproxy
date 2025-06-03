@@ -8,50 +8,63 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Referer, User-Agent');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
   next();
 });
 
 app.get('/proxy', async (req, res) => {
   try {
     const url = req.query.url;
-    if (!url) {
-      console.log('Missing url param');
-      return res.status(400).send('Missing url parameter');
-    }
-    console.log('Proxy request for:', url);
+    if (!url) return res.status(400).send('Missing url parameter');
 
-    // Forward user-agent and referer
-    const headers = {};
-    if (req.headers['user-agent']) headers['User-Agent'] = req.headers['user-agent'];
-    if (req.headers['referer']) headers['Referer'] = req.headers['referer'];
+    // Priority: query params override headers
+    const userAgent = req.query.useragent || req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
+    const referer = req.query.referer || req.headers['referer'] || 'https://allupplay.xyz/';
+
+    const headers = {
+      'User-Agent': userAgent,
+      'Referer': referer,
+    };
+
+    console.log(`Proxying: ${url} with User-Agent: ${userAgent} and Referer: ${referer}`);
 
     const response = await fetch(url, { headers });
     if (!response.ok) {
-      console.log(`Failed to fetch: ${response.status} ${response.statusText}`);
-      return res.status(response.status).send('Failed to fetch resource');
+      return res.status(response.status).send(`Failed to fetch resource, status: ${response.status}`);
     }
 
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
     res.setHeader('content-type', contentType);
     res.setHeader('Access-Control-Allow-Origin', '*');
 
-    const isText = contentType.includes('mpegurl') ||
-                   contentType.includes('dash+xml') ||
+    const isText = contentType.includes('application/vnd.apple.mpegurl') ||
+                   contentType.includes('vnd.apple.mpegurl') ||
+                   contentType.includes('application/x-mpegURL') ||
+                   contentType.includes('application/dash+xml') ||
+                   contentType.includes('mpd+xml') ||
                    contentType.startsWith('text/');
 
     if (isText) {
       let body = await response.text();
 
-      if (contentType.includes('mpegurl')) {
-        body = rewriteM3U8(body, url, req);
-      } else if (contentType.includes('dash+xml')) {
-        body = rewriteMPD(body, url, req);
+      if (
+        contentType.includes('application/vnd.apple.mpegurl') ||
+        contentType.includes('vnd.apple.mpegurl') ||
+        contentType.includes('application/x-mpegURL')
+      ) {
+        body = rewriteM3U8(body, req);
+        return res.send(body);
       }
 
-      res.send(body);
+      if (contentType.includes('application/dash+xml') || contentType.includes('mpd+xml')) {
+        body = rewriteMPD(body, req);
+        return res.send(body);
+      }
+
+      return res.send(body);
     } else {
-      console.log('Streaming binary content');
       response.body.pipe(res);
     }
   } catch (e) {
@@ -60,11 +73,11 @@ app.get('/proxy', async (req, res) => {
   }
 });
 
-function rewriteM3U8(body, baseUrl, req) {
+function rewriteM3U8(body, req) {
   return body.replace(/(https?:\/\/[^\s'"#]+|(?:\.{1,2}\/)[^\s'"#]+)/g, (match) => {
     try {
-      const absUrl = new URL(match, baseUrl).href;
-      const encoded = encodeURIComponent(absUrl);
+      const absoluteUrl = new URL(match, req.query.url).href;
+      const encoded = encodeURIComponent(absoluteUrl);
       return `${req.protocol}://${req.get('host')}/proxy?url=${encoded}`;
     } catch {
       return match;
@@ -72,11 +85,11 @@ function rewriteM3U8(body, baseUrl, req) {
   });
 }
 
-function rewriteMPD(body, baseUrl, req) {
+function rewriteMPD(body, req) {
   return body.replace(/<BaseURL>([^<]+)<\/BaseURL>/g, (_, url) => {
     try {
-      const absUrl = new URL(url, baseUrl).href;
-      const encoded = encodeURIComponent(absUrl);
+      const absoluteUrl = new URL(url, req.query.url).href;
+      const encoded = encodeURIComponent(absoluteUrl);
       return `<BaseURL>${req.protocol}://${req.get('host')}/proxy?url=${encoded}</BaseURL>`;
     } catch {
       return `<BaseURL>${url}</BaseURL>`;
