@@ -1,4 +1,5 @@
 import express from 'express';
+import fetch from 'node-fetch';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,9 +14,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Helper: get fetch (built-in in Node 18+)
-const fetchFn = global.fetch || (await import('node-fetch')).default;
-
+// Proxy endpoint: /proxy?url=ENCODED_URL
 app.get('/proxy', async (req, res) => {
   try {
     const url = req.query.url;
@@ -26,67 +25,67 @@ app.get('/proxy', async (req, res) => {
     if (req.headers['user-agent']) headers['User-Agent'] = req.headers['user-agent'];
     if (req.headers['referer']) headers['Referer'] = req.headers['referer'];
 
-    const response = await fetchFn(url, { headers });
-
+    // Fetch original resource
+    const response = await fetch(url, { headers });
     if (!response.ok) {
-      return res.status(response.status).send(`Failed to fetch resource: ${response.statusText}`);
+      return res.status(response.status).send('Failed to fetch resource');
     }
 
+    // Get content-type
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
-
     res.setHeader('content-type', contentType);
     res.setHeader('Access-Control-Allow-Origin', '*');
 
-    // For playlists/manifests, we need to rewrite URLs
+    let body = await response.text();
+
+    // If it's an m3u8 playlist, rewrite URLs inside it
     if (
       contentType.includes('application/vnd.apple.mpegurl') ||
       contentType.includes('vnd.apple.mpegurl') ||
       contentType.includes('application/x-mpegURL')
     ) {
-      const body = await response.text();
-      const rewritten = rewriteM3U8(body, url, req);
-      return res.send(rewritten);
+      body = rewriteM3U8(body, req);
+      return res.send(body);
     }
 
+    // If it's an MPD (dash) manifest, rewrite URLs inside it
     if (contentType.includes('application/dash+xml') || contentType.includes('mpd+xml')) {
-      const body = await response.text();
-      const rewritten = rewriteMPD(body, url, req);
-      return res.send(rewritten);
+      body = rewriteMPD(body, req);
+      return res.send(body);
     }
 
-    // For other content (media segments, etc), pipe the binary data directly:
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
-  } catch (error) {
-    console.error('Proxy error:', error);
+    // For other content, just pipe it
+    res.send(body);
+
+  } catch (e) {
+    console.error(e);
     res.status(500).send('Server error');
   }
 });
 
-function rewriteM3U8(body, baseUrl, req) {
-  // Rewrite URLs in the m3u8 playlist to go through proxy
-  // Match URLs that are absolute or relative
-  return body.replace(/(https?:\/\/[^\s'"#]+|(?:\.{1,2}\/)[^\s'"#]+)/g, (match) => {
+function rewriteM3U8(body, req) {
+  // Rewrite all non-comment lines (not starting with #) as proxied URLs
+  const lines = body.split('\n').map(line => {
+    if (line.trim() === '' || line.startsWith('#')) {
+      return line; // leave comments and empty lines unchanged
+    }
     try {
-      const absoluteUrl = new URL(match, baseUrl).href;
+      const absoluteUrl = new URL(line, req.query.url).href;
       const encoded = encodeURIComponent(absoluteUrl);
       return `${req.protocol}://${req.get('host')}/proxy?url=${encoded}`;
     } catch {
-      return match;
+      // If it's not a valid URL, leave as-is
+      return line;
     }
   });
+  return lines.join('\n');
 }
 
-function rewriteMPD(body, baseUrl, req) {
-  // Rewrite <BaseURL> tags in MPD XML manifest to proxy URLs
+function rewriteMPD(body, req) {
+  // MPD is XML, rewrite URLs inside <BaseURL> tags
   return body.replace(/<BaseURL>([^<]+)<\/BaseURL>/g, (_, url) => {
-    try {
-      const absoluteUrl = new URL(url, baseUrl).href;
-      const encoded = encodeURIComponent(absoluteUrl);
-      return `<BaseURL>${req.protocol}://${req.get('host')}/proxy?url=${encoded}</BaseURL>`;
-    } catch {
-      return `<BaseURL>${url}</BaseURL>`;
-    }
+    const encoded = encodeURIComponent(new URL(url, req.query.url).href);
+    return `<BaseURL>${req.protocol}://${req.get('host')}/proxy?url=${encoded}</BaseURL>`;
   });
 }
 
