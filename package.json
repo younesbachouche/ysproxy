@@ -1,6 +1,7 @@
 {
   "name": "my-project",
   "version": "1.0.0",
+  "type": "module",
   "description": "Streaming proxy server",
   "main": "server.js",
   "scripts": {
