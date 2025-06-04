@@ -1,10 +1,20 @@
 {
   "name": "m3u8-proxy",
   "version": "1.0.0",
+  "description": "A simple proxy to stream .m3u8 links with auto-detected headers and CORS support.",
   "main": "proxy-server.js",
   "scripts": {
     "start": "node proxy-server.js"
   },
+  "keywords": [
+    "proxy",
+    "m3u8",
+    "stream",
+    "CORS",
+    "video"
+  ],
+  "author": "YourName",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "http-proxy-middleware": "^2.0.6"
