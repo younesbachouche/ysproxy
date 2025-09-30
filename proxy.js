@@ -7,8 +7,8 @@ const app = express();
 app.use(cors()); // allow browser to request the proxy
 
 // Defaults you asked for:
-const DEFAULT_REFERER = 'https://fram2.4chr.online/';
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36';
+const DEFAULT_REFERER = 'https://jxoxkplay.xyz/';
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/534.24 (KHTML, like Gecko) Chrome/11.0.696.34 Safari/534.24';
 
 // Simple whitelist (only allow m3u8 from dupereasy.com). Change / extend as needed.
 const ALLOWED_HOST_PATTERN = /dupereasy\.com/i;
