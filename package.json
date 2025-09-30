@@ -1,0 +1,16 @@
+{
+  "name": "m3u8-proxy",
+  "version": "1.0.0",
+  "main": "proxy.js",
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "start": "node proxy.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "node-fetch": "^2.6.12"
+  }
+}
