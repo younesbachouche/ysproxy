@@ -7,8 +7,8 @@ const app = express();
 app.use(cors()); // allow browser to request the proxy
 
 // Defaults you asked for:
-const DEFAULT_REFERER = 'https://liveboxpro.com/';
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
+const DEFAULT_REFERER = 'https://fram2.4chr.online/';
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36';
 
 // Simple whitelist (only allow m3u8 from dupereasy.com). Change / extend as needed.
 const ALLOWED_HOST_PATTERN = /dupereasy\.com/i;
